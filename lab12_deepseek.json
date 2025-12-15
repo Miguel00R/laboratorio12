@@ -1,0 +1,319 @@
+{
+  "name": "lab12_deepseek",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "69c826ca-4443-469a-963e-db397a86918b",
+      "type": "n8n-nodes-base.cron",
+      "position": [
+        -1824,
+        -352
+      ],
+      "name": "Programador Ejecución",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.values() }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $vars.API_DISPOSITIVOS_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "c03afda4-f476-43d1-b2c6-ac85f8e38cd9",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -1616,
+        -352
+      ],
+      "name": "Ingesta Datos Dispositivos",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "qyv76cn88wTHeAEV",
+          "name": "primero"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "f375bb9e-0a7e-4e0e-8f53-a2812c072f01",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -1392,
+        -352
+      ],
+      "name": "Limpieza y Estandarización",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {},
+      "id": "65c81f54-2876-46fb-9497-a1bec795856e",
+      "type": "n8n-nodes-base.merge",
+      "position": [
+        -1168,
+        -352
+      ],
+      "name": "Fusión de Datos",
+      "typeVersion": 3.2
+    },
+    {
+      "parameters": {},
+      "id": "ce607bf7-6a25-42d5-982d-9eaa1a991ecd",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -944,
+        -352
+      ],
+      "name": "Agregar Contexto Operativo",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {},
+      "id": "311553bb-6361-497d-b959-aa875cd76180",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -736,
+        -352
+      ],
+      "name": "Modelo ML - Predicción Fatiga",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.indice_fatiga }}",
+              "rightValue": 80,
+              "operator": {
+                "type": "number",
+                "operation": "larger"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "5f6f43d2-3a60-4c98-b7b2-6c65a1dc8ffc",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -512,
+        -400
+      ],
+      "name": "Lógica de Alertas",
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "tableId": "medicos"
+      },
+      "id": "e8620e89-0f82-4eb2-a676-ec799ce2380d",
+      "type": "n8n-nodes-base.supabase",
+      "position": [
+        -272,
+        -480
+      ],
+      "name": "Crear Alerta en BD",
+      "typeVersion": 1,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Nc3iw7nSeR2BAEys",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $vars.STREAMLIT_WEBHOOK_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "operador_id",
+              "value": "={{ $json.id_operador }}"
+            },
+            {
+              "name": "indice_fatiga",
+              "value": "={{ $json.indice_fatiga }}"
+            },
+            {
+              "name": "nivel_alerta",
+              "value": "={{ $json.clasificacion_riesgo }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "3acb3bbb-a243-4000-8a93-75095f2014dd",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -272,
+        -304
+      ],
+      "name": "Notificar Frontend Streamlit",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "qyv76cn88wTHeAEV",
+          "name": "primero"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "medicos"
+      },
+      "id": "de7b2852-00f3-4a41-8f79-1a9e60969a9b",
+      "type": "n8n-nodes-base.supabase",
+      "position": [
+        -512,
+        -144
+      ],
+      "name": "Guardar Métricas Procesadas",
+      "typeVersion": 1,
+      "credentials": {
+        "supabaseApi": {
+          "id": "Nc3iw7nSeR2BAEys",
+          "name": "Supabase account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Programador Ejecución": {
+      "main": [
+        [
+          {
+            "node": "Ingesta Datos Dispositivos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingesta Datos Dispositivos": {
+      "main": [
+        [
+          {
+            "node": "Limpieza y Estandarización",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limpieza y Estandarización": {
+      "main": [
+        [
+          {
+            "node": "Fusión de Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fusión de Datos": {
+      "main": [
+        [
+          {
+            "node": "Agregar Contexto Operativo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar Contexto Operativo": {
+      "main": [
+        [
+          {
+            "node": "Modelo ML - Predicción Fatiga",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo ML - Predicción Fatiga": {
+      "main": [
+        [
+          {
+            "node": "Lógica de Alertas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Guardar Métricas Procesadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lógica de Alertas": {
+      "main": [
+        [
+          {
+            "node": "Crear Alerta en BD",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notificar Frontend Streamlit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a28784f8-b883-4880-b2c9-8d8a454ab70a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "31d824a65b44823506d2248f2c11e621a96b7eb2b3a5acee4f879ac36050de8c"
+  },
+  "id": "EgpFMrK8jcPXCIwC",
+  "tags": []
+}

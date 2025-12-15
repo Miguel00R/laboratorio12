@@ -1,0 +1,292 @@
+{
+  "name": "lab12_claude",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const d = item.json;\n\n  // Simular un ID de dispositivo y una calidad de datos\n  d.dispositivo_id = d.id;       // usamos el id del TODO como si fuera el dispositivo\n  d.calidad_datos = 1;           // 1 = 100% de calidad (solo para el lab)\n}\n\nreturn items;\n"
+      },
+      "id": "ac8778b8-5ea1-48c1-8deb-feac56027761",
+      "name": "Limpieza y Estandarización",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -848,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tomar todos los items de entrada\nconst items = $input.all();\n\n// Función que genera el contexto operativo para cada registro\nfunction obtenerContextoOperativo(ref) {\n  const maquinas = ['excavadora', 'camión minero', 'grúa'];\n  const turnos = ['dia', 'noche'];\n\n  const idx = (ref || 1) % maquinas.length;\n\n  // UUID del operador demo creado en Supabase\n  const OPERADOR_DEMO_ID = '00000000-0000-0000-0000-000000000001';\n\n  return {\n    id_operador: OPERADOR_DEMO_ID,\n    tipo_maquina: maquinas[idx],\n    turno_trabajo: turnos[(ref || 1) % 2],\n    horas_turno: 8,\n    condiciones_climaticas: {\n      temperatura: 22 + idx,\n      humedad: 60,\n    },\n  };\n}\n\n// Construir la salida combinando datos originales + contexto\nconst salida = items.map(item => {\n  const base = item.json;\n\n  // Usamos userId si existe, si no id, y si no, 1\n  const referencia = base.userId ?? base.id ?? 1;\n\n  const contexto = obtenerContextoOperativo(referencia);\n\n  return {\n    json: {\n      ...base,\n      ...contexto,\n    },\n  };\n});\n\n// Devolver todos los items enriquecidos\nreturn salida;\n"
+      },
+      "id": "6fc862c8-18c3-49ac-afa6-70694fa0fc0c",
+      "name": "Agregar Contexto Operativo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -608,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nodo: Modelo ML – Predicción Fatiga\n// Modo: Run Once for All Items\n// Lenguaje: JavaScript\n\nconst items = $input.all();\n\n// =========================\n// Funciones auxiliares\n// =========================\n\nfunction calcularIndiceFatiga(base, idx) {\n  let fatiga = 40;\n\n  const turno = base.turno_trabajo || 'dia';\n  const horas = Number(base.horas_turno ?? 8);\n  const temp = base.condiciones_climaticas?.temperatura ?? 22;\n  const humedad = base.condiciones_climaticas?.humedad ?? 60;\n\n  // Noche aumenta fatiga\n  if (turno === 'noche') fatiga += 15;\n\n  // Más de 8 horas de turno\n  if (!isNaN(horas) && horas > 8) {\n    fatiga += (horas - 8) * 3;\n  }\n\n  // Temperatura y humedad\n  fatiga += (temp - 22) * 0.8;\n  fatiga += (humedad - 60) * 0.2;\n\n  // Pequeño ruido para que no sea todo igual\n  fatiga += (idx % 10) - 5;\n\n  // Limitar entre 0 y 100\n  fatiga = Math.max(0, Math.min(100, fatiga));\n\n  return fatiga;\n}\n\nfunction clasificarRiesgo(indice) {\n  if (indice < 30) return 'bajo';\n  if (indice < 60) return 'medio';\n  if (indice < 80) return 'alto';\n  return 'critico';\n}\n\nfunction generarSenalesBiometricas(indice, idx) {\n  // Frecuencia cardíaca (bpm)\n  let frecuencia_cardiaca = 65 + indice * 0.8 + (idx % 7);\n  frecuencia_cardiaca = Math.round(Math.max(50, Math.min(140, frecuencia_cardiaca)));\n\n  // HRV (ms) – baja cuando la fatiga es alta\n  let hrv = 80 - indice * 0.4 + (idx % 5);\n  hrv = Math.round(Math.max(20, Math.min(120, hrv)));\n\n  // SpO2 (%) – ligeramente menor con fatiga alta\n  let spo2 = 99 - indice * 0.05;\n  spo2 = Math.round(Math.max(88, Math.min(100, spo2)));\n\n  // Temperatura de piel (°C)\n  let temperatura_piel = 36 + indice * 0.02 + (idx % 3) * 0.1;\n  temperatura_piel = Number(temperatura_piel.toFixed(2));\n\n  // Postura ángulo (°) – supongamos sentado 0–90°\n  let postura_angulo = 10 + indice * 0.3 + (idx % 10);\n  postura_angulo = Math.round(Math.max(0, Math.min(120, postura_angulo)));\n\n  // Actividad muscular (0–100)\n  let actividad_muscular = 20 + indice * 0.6 + (idx % 9);\n  actividad_muscular = Math.round(Math.max(0, Math.min(100, actividad_muscular)));\n\n  // Movimientos anómalos (0–20) – más cuando hay mucha fatiga\n  let movimientos_anomalos = Math.round(indice / 10 + (idx % 4));\n  movimientos_anomalos = Math.max(0, Math.min(20, movimientos_anomalos));\n\n  return {\n    frecuencia_cardiaca,\n    hrv,\n    spo2,\n    temperatura_piel,\n    postura_angulo,\n    actividad_muscular,\n    movimientos_anomalos,\n  };\n}\n\n// =========================\n// Construir salida\n// =========================\n\nconst ahoraISO = new Date().toISOString();\n\nconst salida = items.map((item, idx) => {\n  const base = item.json;\n\n  const indice_fatiga = calcularIndiceFatiga(base, idx);\n  const clasificacion_riesgo = clasificarRiesgo(indice_fatiga);\n  const senales = generarSenalesBiometricas(indice_fatiga, idx);\n\n  return {\n    json: {\n      ...base,\n      indice_fatiga,\n      clasificacion_riesgo,\n      timestamp_prediccion: ahoraISO,\n      ...senales,\n    },\n  };\n});\n\nreturn salida;\n"
+      },
+      "id": "7ba4b213-12e5-4961-983b-07a7f406587e",
+      "name": "Modelo ML - Predicción Fatiga",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "4af3a2bb-9256-4040-a4b5-5baf703f0333",
+              "leftValue": "={{ $json.indice_fatiga }}",
+              "rightValue": 65,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6c342fb0-19f5-45b7-8a68-c9a3a877efa4",
+      "name": "Lógica de Alertas",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "alertas",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "nivel_alerta",
+              "fieldValue": "={{$json.clasificacion_riesgo}}"
+            },
+            {
+              "fieldId": "descripcion",
+              "fieldValue": "Fatiga elevada detectada por el modelo de predicción."
+            },
+            {
+              "fieldId": "estado",
+              "fieldValue": "activa"
+            },
+            {
+              "fieldId": "id_operador",
+              "fieldValue": "={{ $json.id_operador }}"
+            }
+          ]
+        }
+      },
+      "id": "c9eb647d-147f-494b-b4e4-f5c1c36aaab7",
+      "name": "Crear Alerta en BD",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        176,
+        112
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Nc3iw7nSeR2BAEys",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "medicos"
+      },
+      "id": "e1f005ef-3167-486d-acd0-ef76b10b295d",
+      "name": "Guardar Métricas Procesadas",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        464
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Nc3iw7nSeR2BAEys",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "bd84f713-f257-48a3-8116-f8dd7a6fa060",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1056,
+        288
+      ],
+      "id": "a211fa2c-2ec7-4621-935a-565bd57d1527",
+      "name": "Webhook",
+      "webhookId": "bd84f713-f257-48a3-8116-f8dd7a6fa060"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        480
+      ],
+      "id": "129e71ef-f2ae-4da9-bf6c-45c4ce6d7ff6",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        432,
+        112
+      ],
+      "id": "94206067-d297-4e84-9491-ec85f2793c92",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        176,
+        304
+      ],
+      "id": "14084642-2a45-44c9-93b8-fe52c2691b75",
+      "name": "Respond to Webhook2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Limpieza y Estandarización": {
+      "main": [
+        [
+          {
+            "node": "Agregar Contexto Operativo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar Contexto Operativo": {
+      "main": [
+        [
+          {
+            "node": "Modelo ML - Predicción Fatiga",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo ML - Predicción Fatiga": {
+      "main": [
+        [
+          {
+            "node": "Lógica de Alertas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Guardar Métricas Procesadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lógica de Alertas": {
+      "main": [
+        [
+          {
+            "node": "Crear Alerta en BD",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Limpieza y Estandarización",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Métricas Procesadas": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Alerta en BD": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "df5ff6b9-266a-4a89-a1de-1819bb4c8d64",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "31d824a65b44823506d2248f2c11e621a96b7eb2b3a5acee4f879ac36050de8c"
+  },
+  "id": "OtSw4xvGnYkkKVDa",
+  "tags": []
+}

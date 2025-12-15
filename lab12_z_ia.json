@@ -1,0 +1,377 @@
+{
+  "name": "lab12_z_ia",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fatigue-data",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "13a8dd49-fd6c-4e63-ab85-61ddcb0c09f6",
+      "name": "Recepción de Datos",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        112
+      ],
+      "webhookId": "560404da-0c15-4ee3-bb80-e0ad150e680d"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extraer y validar datos del webhook\nconst body = $input.first().json;\n\nif (!body.id_dispositivo || !body.timestamp || !body.datos) {\n  throw new Error('Datos incompletos o inválidos');\n}\n\nreturn [{ json: body }];"
+      },
+      "id": "cdff7740-30ac-48e4-94de-db4d429f276e",
+      "name": "Validar Datos",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "medicos"
+      },
+      "id": "7740bd56-91b7-481d-99d9-329cce99177f",
+      "name": "Guardar Datos Crudos",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Nc3iw7nSeR2BAEys",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "medicos"
+      },
+      "id": "eda95ae6-3975-4038-9d1c-2b3d4309fd9e",
+      "name": "Obtener Info Dispositivo",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        0,
+        208
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Nc3iw7nSeR2BAEys",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Procesar y limpiar datos\nconst entrada = $node[\"Validar Datos\"].first().json;\nconst dispositivo = $node[\"Obtener Info Dispositivo\"].first().json;\n\nconst datos = entrada.datos;\n\nlet datosProcesados = {\n  timestamp: entrada.timestamp,\n  id_dispositivo: entrada.id_dispositivo,\n  id_operador: dispositivo.id_operador_asignado\n};\n\nif (dispositivo.tipo === 'SmartWatch') {\n  datosProcesados.hrv = datos.hrv || null;\n  datosProcesados.spo2 = datos.spo2 || null;\n  datosProcesados.frecuencia_cardiaca = datos.frecuencia_cardiaca || null;\n  datosProcesados.temperatura_piel = datos.temperatura_piel || null;\n  datosProcesados.nivel_estres = datos.nivel_estres || null;\n}\n\nif (dispositivo.tipo === 'Banda') {\n  datosProcesados.angulo_inclinacion = datos.angulo_inclinacion || null;\n  datosProcesados.nivel_contra_muscular = datos.nivel_contra_muscular || null;\n}\n\ndatosProcesados.tipo_maquinaria = datos.tipo_maquinaria || null;\ndatosProcesados.turno_trabajo = datos.turno_trabajo || null;\ndatosProcesados.horas_turno = datos.horas_turno || null;\ndatosProcesados.temperatura_ambiente = datos.temperatura_ambiente || null;\ndatosProcesados.humedad_ambiente = datos.humedad_ambiente || null;\n\nreturn [{ json: datosProcesados }];"
+      },
+      "id": "282af7f5-514f-43f8-8c20-efce32548245",
+      "name": "Procesar Datos",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const datos = $input.first().json;\n\nlet indice = 0;\n\nif (datos.hrv) indice += (50 - datos.hrv) * 0.5;\nif (datos.spo2) indice += (98 - datos.spo2) * 2;\nif (datos.angulo_inclinacion) indice += datos.angulo_inclinacion * 0.8;\nif (datos.horas_turno) indice += datos.horas_turno * 2;\n\nindice = Math.max(0, Math.min(100, indice));\n\nlet riesgo = 'Bajo';\nif (indice >= 25 && indice < 50) riesgo = 'Medio';\nif (indice >= 50 && indice < 75) riesgo = 'Alto';\nif (indice >= 75) riesgo = 'Crítico';\n\nreturn [{ json: { ...datos, indice_fatiga: indice, clasificacion_riesgo: riesgo } }];"
+      },
+      "id": "f6f0588d-8575-4171-b1a8-efab31785e6f",
+      "name": "Calcular Índice de Fatiga",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const datos = $input.first().json;\n\nlet anomalia = false;\nlet descripcion = '';\n\nif (datos.hrv < 20) { anomalia = true; descripcion += 'HRV extremadamente bajo. '; }\nif (datos.spo2 < 90) { anomalia = true; descripcion += 'SpO2 bajo. '; }\nif (datos.angulo_inclinacion > 45) { anomalia = true; descripcion += 'Inclinación peligrosa. '; }\nif (datos.frecuencia_cardiaca && (datos.frecuencia_cardiaca < 40 || datos.frecuencia_cardiaca > 120)) {\n  anomalia = true;\n  descripcion += 'Frecuencia cardíaca anómala. ';\n}\n\nreturn [{ json: { ...datos, anomalia_detectada: anomalia, descripcion_anomalia: descripcion } }];"
+      },
+      "id": "6830780d-590b-40a7-93d5-14b4518dbe23",
+      "name": "Detectar Anomalías",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        672,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const datos = $input.first().json;\n\nlet generar = false;\nlet nivel = 'Bajo';\nlet descripcion = '';\n\nif (datos.indice_fatiga > 80) {\n  generar = true;\n  nivel = 'Crítico';\n  descripcion = `Índice de fatiga crítico: ${datos.indice_fatiga}`;\n} else if (datos.indice_fatiga > 60) {\n  generar = true;\n  nivel = 'Alto';\n  descripcion = `Índice de fatiga alto: ${datos.indice_fatiga}`;\n}\n\nif (datos.anomalia_detectada) {\n  generar = true;\n  nivel = 'Crítico';\n  descripcion += ` Anomalía: ${datos.descripcion_anomalia}`;\n}\n\nreturn [{ json: { ...datos, generar_alerta: generar, nivel_alerta: nivel, descripcion_alerta: descripcion } }];"
+      },
+      "id": "e2143b76-f929-41f1-8084-68e0e3dc5951",
+      "name": "Evaluar Alertas",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        880,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "medicos"
+      },
+      "id": "1fb0e2ef-ac8e-4ee2-b5e5-22aba361c15a",
+      "name": "Guardar Métricas Procesadas",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        -64
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Nc3iw7nSeR2BAEys",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const d = $input.first().json;\n\nif (!d.generar_alerta) return [];\n\nreturn [{ json: {\n  timestamp: d.timestamp,\n  id_operador: d.id_operador,\n  nivel_alerta: d.nivel_alerta,\n  descripcion: d.descripcion_alerta,\n  estado: 'activa'\n}}];"
+      },
+      "id": "b405e827-a4a1-4402-badc-2b3ae9beb802",
+      "name": "Preparar Alerta",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "pacientes"
+      },
+      "id": "89878e95-d020-4354-9c68-9daca1110915",
+      "name": "Guardar Alerta",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        336
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "Nc3iw7nSeR2BAEys",
+          "name": "Supabase account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const d = $input.first().json;\nif (!d.generar_alerta) return [];\nreturn [{ json: d }];"
+      },
+      "id": "d44dcff7-bf90-4ebd-bd7d-ba41d4b0c611",
+      "name": "Preparar Notificación",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://tu-streamlit-app.herokuapp.com/webhook-alerta",
+        "options": {}
+      },
+      "id": "0921232d-ef8c-4b5b-9054-dfb0da3d30cb",
+      "name": "Enviar Notificación a Streamlit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "bb8deac0-c3d1-45f7-bc73-7c9c4e437614",
+      "name": "Respuesta Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1744,
+        64
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Recepción de Datos": {
+      "main": [
+        [
+          {
+            "node": "Validar Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Datos": {
+      "main": [
+        [
+          {
+            "node": "Guardar Datos Crudos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Obtener Info Dispositivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Info Dispositivo": {
+      "main": [
+        [
+          {
+            "node": "Procesar Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar Datos": {
+      "main": [
+        [
+          {
+            "node": "Calcular Índice de Fatiga",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular Índice de Fatiga": {
+      "main": [
+        [
+          {
+            "node": "Detectar Anomalías",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detectar Anomalías": {
+      "main": [
+        [
+          {
+            "node": "Evaluar Alertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar Alertas": {
+      "main": [
+        [
+          {
+            "node": "Guardar Métricas Procesadas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar Alerta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar Notificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Alerta": {
+      "main": [
+        [
+          {
+            "node": "Guardar Alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Notificación": {
+      "main": [
+        [
+          {
+            "node": "Enviar Notificación a Streamlit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Métricas Procesadas": {
+      "main": [
+        [
+          {
+            "node": "Respuesta Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Alerta": {
+      "main": [
+        [
+          {
+            "node": "Respuesta Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Notificación a Streamlit": {
+      "main": [
+        [
+          {
+            "node": "Respuesta Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "5a4f4b76-49ee-4dc5-9b38-096e76c2880d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "31d824a65b44823506d2248f2c11e621a96b7eb2b3a5acee4f879ac36050de8c"
+  },
+  "id": "j8Z8GKwa8lDYjiOf",
+  "tags": []
+}
